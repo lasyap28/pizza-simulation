@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pizza in the Oven: Related Rates</title>
+<!-- Anton is the bold condensed heading font; it loads online and falls back to Impact when offline -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&display=swap">
+<style>
+  /* Bakery palette: cream, brick red, pizza orange, pepper green, cheese yellow */
+  :root { --bg:#fff4de; --panel:#fffaf0; --ink:#4a2412; --mute:#7a5238; --hot:#c4540f; --gold:#bf3412; --teal:#4f7a2b; --pink:#a8205a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Trebuchet MS",Verdana,sans-serif; }
+  h1 { margin:0; font-family:Anton,Impact,'Arial Narrow',sans-serif; font-weight:400; font-size:2.6rem; letter-spacing:.5px; color:var(--gold); }
+  header { padding:14px 20px; border-bottom:6px solid #ffe566; }
+  header p { margin:4px 0 0; color:var(--mute); font-size:.9rem; }
+  main { display:flex; flex-wrap:wrap; gap:16px; padding:16px; }
+  #stage { flex:2 1 460px; min-width:300px; }
+  canvas { width:100%; height:auto; background:#fff4de; border:3px solid #f0d9a8; border-radius:16px; display:block; }
+  aside { flex:1 1 300px; display:flex; flex-direction:column; gap:12px; }
+  section { background:var(--panel); border:2px solid #f0d9a8; border-radius:16px; padding:12px 14px; }
+  h2 { margin:0 0 8px; font-family:Anton,Impact,'Arial Narrow',sans-serif; font-weight:400; letter-spacing:.5px; font-size:1.3rem; color:var(--gold); }
+  label { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:6px 0; font-size:.9rem; }
+  input[type=number] { width:110px; padding:4px 6px; border-radius:6px; border:2px solid var(--teal); background:#fff; color:var(--ink); font-size:.95rem; }
+  input[type=range] { width:100%; accent-color:var(--hot); }
+  button { padding:8px 16px; border:0; border-radius:8px; font-weight:bold; font-size:1rem; cursor:pointer; color:#fff4de; }
+  #play { background:var(--teal); } #reset { background:var(--gold); }
+  button:focus-visible, input:focus-visible { outline:3px solid var(--pink); outline-offset:2px; }
+  .row { display:flex; gap:10px; }
+  table { width:100%; border-collapse:collapse; font-size:.92rem; }
+  td { padding:3px 0; } td:last-child { text-align:right; font-variant-numeric:tabular-nums; font-weight:bold; }
+  .t{color:var(--gold)} .r{color:var(--teal)} .a{color:var(--hot)} .da{color:var(--pink)}
+  #msg { min-height:1.2em; font-size:.85rem; color:var(--pink); }
+  .math { font-family:Consolas,monospace; font-size:.85rem; line-height:1.5; color:var(--mute); }
+  /* Intro overlay: covers the page until the oven animation finishes */
+  #intro { position:fixed; inset:0; z-index:10; background:#fff4de; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+  #intro canvas { width:auto; max-width:96vw; max-height:68vh; }
+  #cap { font-size:1.2rem; color:var(--gold); min-height:1.6em; text-align:center; padding:0 12px; }
+  #skip { background:transparent; color:var(--mute); border:2px solid var(--mute); }
+</style>
+</head>
+<body>
+<!-- INTRO: an oven opens to reveal a pizza, then fades into the simulation -->
+<div id="intro">
+  <canvas id="ic" width="760" height="560" aria-label="An oven opening to reveal a pizza"></canvas>
+  <div id="cap"></div>
+  <button id="skip">Skip intro</button>
+</div>
+<header>
+  <h1>Pizza in the Oven: How fast is the area growing?</h1>
+  <p>A circular pizza bakes and its radius grows at a constant rate. Related rates links dr/dt to dA/dt.</p>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="cv" width="760" height="560" aria-label="Animation of a circular pizza expanding as it bakes in an oven"></canvas>
+  </div>
+  <aside>
+    <section>
+      <h2>Starting conditions (edit, then Reset)</h2>
+      <label>Starting radius r₀ (cm) <input id="r0" type="number" value="50" step="any" min="0.01"></label>
+      <label>Radius rate dr/dt (cm/min) <input id="rate" type="number" value="0.01" step="any" min="0.0001"></label>
+      <label>Stop when radius reaches (cm) <input id="rstop" type="number" value="51" step="any"></label>
+      <div id="msg"></div>
+    </section>
+    <section>
+      <h2>Controls</h2>
+      <div class="row"><button id="play">Play</button><button id="reset">Reset</button></div>
+      <label for="speed" style="margin-top:10px">Simulation speed <span id="speedLbl"></span></label>
+      <input id="speed" type="range" min="0" max="100" value="40">
+    </section>
+    <section>
+      <h2>Live values</h2>
+      <table>
+        <tr><td>Time t</td><td class="t" id="vt"></td></tr>
+        <tr><td>Radius r</td><td class="r" id="vr"></td></tr>
+        <tr><td>Radius rate dr/dt</td><td class="r" id="vdr"></td></tr>
+        <tr><td>Area A = πr²</td><td class="a" id="vA"></td></tr>
+        <tr><td>Area gained ΔA</td><td class="a" id="vdA"></td></tr>
+        <tr><td>Area rate dA/dt = 2πr·dr/dt</td><td class="da" id="vdAdt"></td></tr>
+      </table>
+    </section>
+    <section>
+      <h2>The math</h2>
+      <div class="math">A = πr²<br>dA/dt = 2πr · dr/dt<br>At r = 50 cm, dr/dt = 0.01 cm/min:<br>dA/dt = 2π(50)(0.01) = π ≈ 3.1416 cm²/min</div>
+    </section>
+  </aside>
+</main>
+
+<script>
+/* ===================== MATHEMATICS =====================
+   Area of a circle: A = pi r^2.
+   Differentiate both sides with respect to time t (chain rule):
+        dA/dt = 2 pi r (dr/dt)
+   The problem says dr/dt is CONSTANT, so the radius is exactly linear in time:
+        r(t) = r0 + (dr/dt) * t
+   We therefore use this exact formula instead of numerical integration. */
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+
+// ---- State ----
+let r0, rate, rStop;       // user-set conditions (cm, cm/min, cm)
+let t = 0;                 // simulated time in minutes
+let running = false, finished = false, lastStamp = null;
+
+// ---- Controls: speed slider maps 0..100 to 0.1..1000 simulated min per real second (log scale) ----
+function speedValue() { return Math.pow(10, -1 + 4 * $('speed').value / 100); }
+function updateSpeedLabel() {
+  const s = speedValue();
+  $('speedLbl').textContent = (s < 10 ? s.toFixed(1) : Math.round(s)) + ' min per second';
+}
+$('speed').addEventListener('input', updateSpeedLabel);
+
+// ---- Read and validate the editable starting conditions ----
+function readInputs() {
+  const a = parseFloat($('r0').value), b = parseFloat($('rate').value), c = parseFloat($('rstop').value);
+  if (!(a > 0) || !(b > 0) || !(c > a)) {
+    $('msg').textContent = 'Need r₀ > 0, dr/dt > 0, and stop radius > r₀.';
+    return false;
+  }
+  $('msg').textContent = '';
+  r0 = a; rate = b; rStop = c;
+  return true;
+}
+
+// ---- Reset: re-read inputs, set t = 0, pause ----
+function reset() {
+  running = false; finished = false; lastStamp = null; t = 0;
+  $('play').textContent = 'Play';
+  if (!readInputs()) { r0 = 50; rate = 0.01; rStop = 51; }
+  draw();
+}
+$('reset').addEventListener('click', reset);
+
+// ---- Play / Pause ----
+$('play').addEventListener('click', () => {
+  if (finished) reset();            // after stopping, Play restarts
+  if (!readInputs()) return;
+  running = !running; lastStamp = null;
+  $('play').textContent = running ? 'Pause' : 'Play';
+  if (running) requestAnimationFrame(frame);
+});
+
+// ---- Animation loop: advance simulated time by (real seconds x speed) ----
+function frame(stamp) {
+  if (!running) return;
+  if (lastStamp !== null) t += Math.min((stamp - lastStamp) / 1000, 0.1) * speedValue();
+  lastStamp = stamp;
+  // Stopping condition: the radius has reached the target. Clamp t so r equals it exactly.
+  const tStop = (rStop - r0) / rate;
+  if (t >= tStop) { t = tStop; running = false; finished = true; $('play').textContent = 'Play again'; }
+  draw();
+  if (running) requestAnimationFrame(frame);
+}
+
+// ===================== DRAWING =====================
+/* The real growth is tiny (0.01 cm per minute on a 50 cm radius), so a true-scale
+   drawing would look frozen. We draw the plate at a fixed base size and EXAGGERATE
+   only the growth: pixel radius = BASE + (r - r0) * PX_PER_CM. The number readouts
+   always use the true values. The dashed circle is the starting size. */
+const BASE = 130, MAX_GROW_PX = 90;
+
+function lerp(a, b, f) { return Math.round(a + (b - a) * f); }
+
+function draw() {
+  const W = cv.width, H = cv.height, cx = W / 2, cy = 270;
+  const r = r0 + rate * t, A = Math.PI * r * r, A0 = Math.PI * r0 * r0;
+  const prog = Math.min(1, (r - r0) / (rStop - r0));      // 0 to 1 progress toward the stop radius
+  const pxPerCm = MAX_GROW_PX / (rStop - r0);             // exaggeration so the final size fills the view
+  const R = BASE + (r - r0) * pxPerCm;
+
+  // Oven backdrop
+  ctx.clearRect(0, 0, W, H);
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#fff4de'); bg.addColorStop(1, '#fbe3b8');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  drawZig(ctx, 590, 50); drawStar(ctx, 70, 150, 34); drawStar(ctx, 700, 330, 28);
+  // Heating coils glow brighter as time progresses
+  ctx.lineWidth = 8; ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const y = 430 + i * 18;
+    ctx.strokeStyle = `rgb(${lerp(120, 255, prog)},${lerp(40, 110, prog)},30)`;
+    ctx.shadowColor = '#ff7a2f'; ctx.shadowBlur = 8 + 18 * prog;
+    ctx.beginPath(); ctx.moveTo(60, y); ctx.lineTo(W - 60, y); ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  // Area gained (annulus between start and current circle)
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.arc(cx, cy, BASE, 0, 2 * Math.PI, true);
+  ctx.fillStyle = '#ff5d8fcc'; ctx.fill('evenodd');
+
+  // Pizza at its current (exaggerated) radius; it browns as it bakes
+  drawPizza(ctx, cx, cy, R, prog, 1);
+  // Area gained, shown as a translucent pink ring on top of the pizza
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.arc(cx, cy, BASE, 0, 2 * Math.PI, true);
+  ctx.fillStyle = '#ff5d8f77'; ctx.fill('evenodd');
+  // Starting-size outline
+  ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = '#4a2412';
+  ctx.beginPath(); ctx.arc(cx, cy, BASE, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
+
+  // Radius arrow drawn to the current edge
+  ctx.strokeStyle = '#2f5d1f'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + R, cy); ctx.stroke();
+  ctx.fillStyle = '#2f5d1f'; ctx.beginPath(); ctx.arc(cx, cy, 6, 0, 7); ctx.fill();
+  ctx.font = 'bold 18px Trebuchet MS'; ctx.textAlign = 'center';
+  ctx.fillText('r = ' + r.toFixed(3) + ' cm', cx + R / 2, cy - 12);
+
+  // dA/dt label that travels with the pizza's rim.
+  // dA/dt = 2*pi*r*(dr/dt) is recomputed from the current radius, so the tag's value changes as r grows.
+  const dAdt = 2 * Math.PI * r * rate;                    // cm^2/min
+  ctx.strokeStyle = '#bf3412'; ctx.lineWidth = 4;
+  for (let k = 0; k < 6; k++) {                           // six outward arrows show the area spreading
+    const ang = Math.PI / 6 + k * Math.PI / 3, c = Math.cos(ang), s = Math.sin(ang);
+    const x2 = cx + (R + 30) * c, y2 = cy + (R + 30) * s;
+    ctx.beginPath(); ctx.moveTo(cx + (R + 6) * c, cy + (R + 6) * s); ctx.lineTo(x2, y2);
+    ctx.lineTo(x2 - 9 * Math.cos(ang - 0.5), y2 - 9 * Math.sin(ang - 0.5)); ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 9 * Math.cos(ang + 0.5), y2 - 9 * Math.sin(ang + 0.5)); ctx.stroke();
+  }
+  const tag = 'dA/dt = ' + dAdt.toFixed(4) + ' cm²/min';   // tag sits on the rim at 60 degrees below the radius arrow
+  ctx.font = 'bold 17px Trebuchet MS'; ctx.textAlign = 'center';
+  const tw = ctx.measureText(tag).width + 24, tx = cx + R * 0.5, ty = cy + R * 0.866;
+  ctx.fillStyle = '#bf3412'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(tx - tw / 2, ty - 16, tw, 32, 10); else ctx.rect(tx - tw / 2, ty - 16, tw, 32);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff4de'; ctx.fillText(tag, tx, ty + 6);
+
+  // Labels
+  ctx.textAlign = 'left'; ctx.fillStyle = '#4a2412'; ctx.font = '14px Trebuchet MS';
+  ctx.fillText('Dashed line: starting size (r₀ = ' + r0 + ' cm)', 16, 24);
+  ctx.fillStyle = '#a8205a';
+  ctx.fillText('Pink ring: area gained, ΔA = ' + (A - A0).toFixed(3) + ' cm²', 16, 46);
+  ctx.fillStyle = '#7a5238';
+  ctx.fillText('Growth is exaggerated in the drawing so you can see it; numbers are exact.', 16, H - 12);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#bf3412'; ctx.font = 'bold 15px Trebuchet MS';
+  ctx.fillText(finished ? 'Stopped: r reached ' + rStop + ' cm' : (running ? 'Heating…' : 'Paused'), W - 16, 24);
+
+  // Live readouts (units included)
+  $('vt').textContent = t.toFixed(2) + ' min';
+  $('vr').textContent = r.toFixed(4) + ' cm';
+  $('vdr').textContent = rate + ' cm/min';
+  $('vA').textContent = A.toFixed(2) + ' cm²';
+  $('vdA').textContent = (A - A0).toFixed(3) + ' cm²';
+  $('vdAdt').textContent = (2 * Math.PI * r * rate).toFixed(4) + ' cm²/min';
+}
+
+/* ===================== PIZZA DRAWING =====================
+   Draws a pizza of radius R on any 2D context c. Layers: crust, sauce, cheese, pepperoni.
+   prog (0 to 1) browns the crust and cheese as the pizza bakes. alpha fades it in. */
+const PEPS = [[0,-.5],[.45,-.2],[.4,.35],[-.05,.5],[-.45,.25],[-.42,-.28],[.02,.02],[.2,-.22]]; // positions as fractions of R
+function drawPizza(c, cx, cy, R, prog, alpha) {
+  c.save(); c.globalAlpha = alpha;
+  c.beginPath(); c.arc(cx, cy, R, 0, 2 * Math.PI);
+  c.fillStyle = `rgb(${lerp(226,200,prog)},${lerp(170,120,prog)},${lerp(90,50,prog)})`; c.fill();   // crust
+  c.beginPath(); c.arc(cx, cy, R * .9, 0, 2 * Math.PI); c.fillStyle = '#c8321e'; c.fill();           // sauce
+  c.beginPath(); c.arc(cx, cy, R * .84, 0, 2 * Math.PI);
+  c.fillStyle = `rgb(${lerp(255,235,prog)},${lerp(213,160,prog)},${lerp(90,60,prog)})`; c.fill();   // cheese
+  for (const p of PEPS) {                                                                              // pepperoni
+    c.beginPath(); c.arc(cx + p[0] * R, cy + p[1] * R, R * .12, 0, 2 * Math.PI);
+    c.fillStyle = '#d2622e'; c.fill(); c.lineWidth = Math.max(1, R * .015); c.strokeStyle = '#a8431c'; c.stroke();
+  }
+  c.fillStyle = '#9aae52';                                                   // green pepper pieces
+  for (const p of PEPPERS) { c.beginPath(); c.ellipse(cx + p[0] * R, cy + p[1] * R, R * .07, R * .045, p[0] * 3, 0, 2 * Math.PI); c.fill(); }
+  c.restore();
+}
+const PEPPERS = [[.25,-.6],[.62,.1],[-.6,-.05],[.2,.3],[-.25,-.12],[-.28,.62]];
+
+// Decorations that echo the slide theme: red starburst and yellow zigzag
+function drawStar(c, x, y, s) {
+  c.beginPath();
+  for (let i = 0; i < 16; i++) { const a = Math.PI * i / 8, q = (i % 2 ? .3 : 1) * s * (1 + .12 * Math.sin(i * 2.3)); c[i ? 'lineTo' : 'moveTo'](x + q * Math.cos(a), y + q * Math.sin(a)); }
+  c.closePath(); c.fillStyle = '#bf3412'; c.fill();
+}
+function drawZig(c, x, y) {
+  c.beginPath(); c.moveTo(x, y + 40); c.lineTo(x + 60, y); c.lineTo(x + 100, y + 35); c.lineTo(x + 170, y + 10);
+  c.strokeStyle = '#ffe566'; c.lineWidth = 22; c.lineJoin = 'miter'; c.stroke();
+}
+
+/* ===================== INTRO ANIMATION =====================
+   Timeline (seconds): 0-1.6 closed oven | 1.6-3.4 door opens | 3.8-5.4 zoom to pizza
+   | 6.2-7.0 overlay fades out, revealing the simulation underneath. */
+const ic = $('ic').getContext('2d'), intro = $('intro'), cap = $('cap');
+let introStart = null, introDone = false, lastCap = '';
+const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);   // smoothstep easing
+
+function drawOven(open) {
+  // Oven body and control strip with knobs
+  ic.fillStyle = '#bf3412'; ic.fillRect(120, 90, 520, 410);
+  ic.fillStyle = '#8f2610'; ic.fillRect(120, 90, 520, 60);
+  ['#ffe566', '#fff4de', '#ffe566'].forEach((k, i) => { ic.beginPath(); ic.arc(200 + i * 70, 120, 15, 0, 7); ic.fillStyle = k; ic.fill(); });
+  // Interior: warm glow, rack, pizza fading in as the door opens
+  const g = ic.createRadialGradient(380, 320, 20, 380, 320, 260);
+  g.addColorStop(0, '#ff9a3c'); g.addColorStop(1, '#3a1608');
+  ic.fillStyle = g; ic.fillRect(160, 170, 440, 290);
+  ic.fillStyle = '#1b1b1b'; ic.fillRect(160, 405, 440, 8);                 // rack
+  drawPizza(ic, 380, 310, 85, 0, ease(open * 1.6));
+  // Door hinged at the bottom edge (y = 460): its height shrinks as it swings down
+  const dh = 290 * (1 - open), top = 460 - dh;
+  if (open > 0) {                                                          // door seen lying open below the oven
+    ic.fillStyle = '#f4c27a'; ic.beginPath();
+    ic.moveTo(160, 460); ic.lineTo(600, 460); ic.lineTo(630, 460 + 60 * open); ic.lineTo(130, 460 + 60 * open); ic.fill();
+  }
+  if (dh > 1) {
+    ic.fillStyle = '#f4c27a'; ic.fillRect(160, top, 440, dh);
+    if (dh > 60) { ic.fillStyle = 'rgba(30,12,6,.9)'; ic.fillRect(190, top + 40, 380, dh - 60); }   // glass window
+    ic.fillStyle = '#e8eef2'; ic.fillRect(260, top + 12, 240, 10);                                  // handle
+  }
+}
+
+function introFrame(stamp) {
+  if (introDone) return;
+  if (introStart === null) introStart = stamp;
+  const s = (stamp - introStart) / 1000;
+  ic.fillStyle = '#fff4de'; ic.fillRect(0, 0, 760, 560);
+  drawZig(ic, 600, 20); drawZig(ic, -30, 470); drawStar(ic, 70, 90, 40); drawStar(ic, 700, 450, 40);
+  const open = ease((s - 1.6) / 1.8), zoom = ease((s - 3.8) / 1.6), z = 1 + zoom * 1.5;
+  ic.save(); ic.translate(380, 310); ic.scale(z, z); ic.translate(-380, -310);   // zoom about the pizza centre
+  drawOven(open);
+  ic.restore();
+  const text = s < 1.6 ? 'Dinner is in the oven…' : s < 3.8 ? 'Opening the oven door…' : 'A circular pizza bakes, and its radius grows.';
+  if (text !== lastCap) { cap.textContent = text; lastCap = text; }
+  intro.style.opacity = 1 - ease((s - 6.2) / 0.8);
+  if (s >= 7) endIntro(); else requestAnimationFrame(introFrame);
+}
+function endIntro() { introDone = true; intro.style.display = 'none'; }
+$('skip').addEventListener('click', endIntro);
+if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) endIntro();   // respect reduced-motion setting
+else requestAnimationFrame(introFrame);
+
+updateSpeedLabel();
+reset();
+</script>
+</body>
+</html>
